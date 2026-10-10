@@ -44,7 +44,6 @@ class ErrorBoundary extends Component {
 function AppContent() {
   const location = useLocation();
 
-  
   // Robust parameter extraction (checks React Router location then window.location as fallback)
   const getParam = (key) => {
     const search = location.search || window.location.search;
@@ -55,9 +54,20 @@ function AppContent() {
   const yearParam = getParam('year');
 
   // Construct the home link with params if they exist
-  const homePath = tradeParam 
+  const homePath = tradeParam
     ? `/?trade=${encodeURIComponent(tradeParam)}${yearParam ? `&year=${encodeURIComponent(yearParam)}` : ''}`
     : '/';
+
+  // On test pages, hide the global navbar and let TestPage own the full viewport
+  const isTestPage = location.pathname.startsWith('/test/');
+
+  if (isTestPage) {
+    return (
+      <Routes>
+        <Route path="/test/:slug" element={<TestPage />} />
+      </Routes>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -70,7 +80,7 @@ function AppContent() {
            {!tradeParam && <Link to="/" className="btn btn-secondary">Dashboard</Link>}
         </div>
       </nav>
-      
+
       <main className="main-content">
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -82,6 +92,7 @@ function AppContent() {
     </div>
   );
 }
+
 
 function App() {
   return (

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { db, allDbs, getFromAnyDb, saveToAllDbs } from '../firebase';
 import { ref, get, set } from 'firebase/database';
-import { Clock, ChevronLeft, ChevronRight, CheckCircle, ArrowLeft, PlayCircle, AlertCircle, BookOpen } from 'lucide-react';
+import { Clock, ChevronLeft, ChevronRight, CheckCircle, PlayCircle, AlertCircle, BookOpen, ChevronRight as SidebarToggle } from 'lucide-react';
 import './TestPage.css';
 
 export default function TestPage() {
@@ -10,16 +10,19 @@ export default function TestPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
-  
-  const [stage, setStage] = useState('loading'); // loading, instructions, testing, submitted, error, already_attempted
+
+  const [stage, setStage] = useState('loading'); // loading, instructions, testing, submitted, error, already_attempted, student_info
   const [testData, setTestData] = useState(null);
   const [testId, setTestId] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState({});
+  const [markedForReview, setMarkedForReview] = useState({});
+  const [visitedQuestions, setVisitedQuestions] = useState({0: true});
   const [score, setScore] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
-  
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
   // Timer State
   const [timeRemaining, setTimeRemaining] = useState(null);
   const timerRef = useRef(null);
@@ -42,15 +45,12 @@ export default function TestPage() {
         let matchedPath = null;
         let matchedTestId = null;
 
-        // Step 1: Find test path by slug across all connected Firebase databases
         for (const database of allDbs) {
           try {
             const indexRef = ref(database, 'gurujismart/MonthlyTestIndex');
             const snapshot = await get(indexRef);
 
             if (snapshot.exists()) {
-              console.log(`URL Slug to match: "${slug}"`);
-
               const searchIn = (node, depth = 0) => {
                 if (!node || typeof node !== 'object') return;
 
@@ -68,7 +68,6 @@ export default function TestPage() {
                   const safeName = rawName.trim().toLowerCase()
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/^-+|-+$/g, "");
-
                   const generatedSlug = `${safeName}-${safeId}`;
                   if (generatedSlug === urlSlug || node.slug === urlSlug) {
                     isMatch = true;
@@ -80,7 +79,6 @@ export default function TestPage() {
                   const mobile = node.creatorMob || node.createdBy;
                   matchedPath = `gurujismart/Users/${mobile}/MonthlyTests/${node.testId}`;
                   matchedTestId = node.testId;
-                  console.log(`MATCH FOUND! Path: ${matchedPath}`);
                   return true;
                 }
 
@@ -90,9 +88,7 @@ export default function TestPage() {
                 return false;
               };
 
-              if (searchIn(snapshot.val())) {
-                break;
-              }
+              if (searchIn(snapshot.val())) break;
             }
           } catch (e) {
             console.warn("Error searching database for slug:", e);
@@ -105,39 +101,32 @@ export default function TestPage() {
           return;
         }
 
-        // Step 2: Fetch Test Data across databases
         const testSnap = await getFromAnyDb(matchedPath);
 
         if (testSnap.exists()) {
           const data = testSnap.val();
           setTestId(matchedTestId);
-          setTestData({
-            name: data.testTitle || 'Test',
-            ...data
-          });
+          setTestData({ name: data.testTitle || 'Test', ...data });
 
           if (data && data.questions && typeof data.questions === 'object') {
             const qList = Object.keys(data.questions).map(key => {
-              if(!data.questions[key] || typeof data.questions[key] !== 'object') return null;
+              if (!data.questions[key] || typeof data.questions[key] !== 'object') return null;
               return { id: key, ...data.questions[key] };
             }).filter(q => q && q.question);
-            
-            qList.sort((a,b) => (a.questionNo || 0) - (b.questionNo || 0));
+
+            qList.sort((a, b) => (a.questionNo || 0) - (b.questionNo || 0));
             setQuestions(qList);
-            
-            // Set Timer (default to 30 mins)
+
             const durationMins = data.duration ? parseInt(data.duration) : 30;
             setTimeRemaining(durationMins * 60);
-
-            // GO TO STUDENT INFO FIRST
             setStage('student_info');
           } else {
-             setErrorMessage("No questions found in this exam.");
-             setStage('error');
+            setErrorMessage("No questions found in this exam.");
+            setStage('error');
           }
         } else {
-           setErrorMessage("Exam details could not be loaded.");
-           setStage('error');
+          setErrorMessage("Exam details could not be loaded.");
+          setStage('error');
         }
 
       } catch (error) {
@@ -148,14 +137,14 @@ export default function TestPage() {
     };
 
     initTest();
-    
+
     return () => {
-        if(timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
     }
   }, [slug]);
 
   const handleStudentInfoSubmit = async (e) => {
-    if(e) e.preventDefault();
+    if (e) e.preventDefault();
     const errors = {};
     if (!studentInfo.email) errors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(studentInfo.email)) errors.email = "Invalid email format";
@@ -169,65 +158,71 @@ export default function TestPage() {
     }
 
     setStage('loading');
-    
-    // Check if Already Attempted with the provided Registration Number
+
     const safeRegno = studentInfo.regno.replace(/[.#$[\]]/g, '_');
     const resultSnap = await getFromAnyDb(`gurujismart/MonthlyTestResults/${testId}/${safeRegno}`);
-    
+
     if (resultSnap.exists()) {
-        setScore(resultSnap.val().score || 0);
-        setStage('already_attempted');
+      setScore(resultSnap.val().score || 0);
+      setStage('already_attempted');
     } else {
-        setStage('instructions');
+      setStage('instructions');
     }
   };
 
-  // Timer countdown hook
+  // Timer countdown
   useEffect(() => {
-     if (stage === 'testing' && timeRemaining !== null && timeRemaining > 0) {
-        timerRef.current = setInterval(() => {
-           setTimeRemaining(prev => {
-              if (prev <= 1) {
-                 clearInterval(timerRef.current);
-                 // Auto submit using a ref or direct function call
-                 handleSubmit(true); 
-                 return 0;
-              }
-              return prev - 1;
-           });
-        }, 1000);
-     }
-     return () => {
-         if(timerRef.current) clearInterval(timerRef.current);
-     };
-  }, [stage, timeRemaining]); // Depend on stage to start it properly
+    if (stage === 'testing' && timeRemaining !== null && timeRemaining > 0) {
+      timerRef.current = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current);
+            handleSubmit(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [stage]);
 
   const formatTime = (seconds) => {
-     if (seconds === null) return "--:--";
-     const m = Math.floor(seconds / 60);
-     const s = seconds % 60;
-     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    if (seconds === null) return "--:--:--";
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
   const startTest = () => {
-     setStage('testing');
+    setStage('testing');
   };
 
   const handleOptionSelect = (val) => {
     if (stage === 'testing') {
-      setAnswers(prev => ({...prev, [currentQuestionIndex]: val}));
+      setAnswers(prev => ({ ...prev, [currentQuestionIndex]: val }));
     }
   };
 
   const handleTextAnswer = (text) => {
     if (stage === 'testing') {
-      setAnswers(prev => ({...prev, [currentQuestionIndex]: text}));
+      setAnswers(prev => ({ ...prev, [currentQuestionIndex]: text }));
     }
-  }
+  };
+
+  const goToQuestion = (index) => {
+    setVisitedQuestions(prev => ({ ...prev, [index]: true }));
+    setCurrentQuestionIndex(index);
+  };
 
   const handleNext = () => {
     if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
+      const next = currentQuestionIndex + 1;
+      setVisitedQuestions(prev => ({ ...prev, [next]: true }));
+      setCurrentQuestionIndex(next);
     }
   };
 
@@ -237,30 +232,40 @@ export default function TestPage() {
     }
   };
 
+  const handleMarkForReview = () => {
+    setMarkedForReview(prev => ({
+      ...prev,
+      [currentQuestionIndex]: !prev[currentQuestionIndex]
+    }));
+    if (currentQuestionIndex < questions.length - 1) handleNext();
+  };
+
+  const handleClearResponse = () => {
+    setAnswers(prev => {
+      const updated = { ...prev };
+      delete updated[currentQuestionIndex];
+      return updated;
+    });
+  };
+
   const handleSubmit = async (isAutoSubmit = false) => {
-    console.log(`handleSubmit started! AutoSubmit: ${isAutoSubmit}`);
-    setStage('loading'); // Show loading while saving
-    
-    if(timerRef.current) clearInterval(timerRef.current);
+    setStage('loading');
+    if (timerRef.current) clearInterval(timerRef.current);
 
     let calculatedScore = 0;
-    // We must use the latest state directly in this closure. 
-    // Since handleSubmit might be called from interval, answers might be stale if we're not careful.
-    // React state in intervals is tricky, using the functional state for answers wasn't done for calculatedScore, 
-    // but we can trust the current render cycle values for explicit clicks, and the latest functional approach.
     setAnswers(currentAnswers => {
-        questions.forEach((q, index) => {
-          const selected = currentAnswers[index];
-          const correct = q.answer;
-          if(q.section === "MCQ" || q.section === "True/False"){
-            if (selected === correct) {
-                calculatedScore += (q.marks || 1);
-            }
+      questions.forEach((q, index) => {
+        const selected = currentAnswers[index];
+        const correct = q.answer;
+        if (q.section === "MCQ" || q.section === "True/False") {
+          if (selected === correct) {
+            calculatedScore += (q.marks || 1);
           }
-        });
-        
-        saveResultToFirebase(calculatedScore, currentAnswers);
-        return currentAnswers;
+        }
+      });
+
+      saveResultToFirebase(calculatedScore, currentAnswers);
+      return currentAnswers;
     });
   };
 
@@ -268,193 +273,191 @@ export default function TestPage() {
     const { regno, phone, email } = studentInfo;
     const trade = searchParams.get('trade') || testData.trade || '';
     const year = searchParams.get('year') || testData.year || '';
-    
     const safeRegno = regno.replace(/[.#$[\]]/g, '_');
 
     try {
       if (testId && safeRegno) {
-          const resultData = {
-            regno,
-            phone,
-            email,
-            trade,
-            year,
-            score: calculatedScore,
-            totalMarks: testData.totalMarks || questions.reduce((acc, q) => acc + (q.marks || 1), 0),
-            submittedAt: new Date().toLocaleString(),
-            testName: testData.testTitle || testData.name || 'Test',
-            answers: currentAnswers
-          };
-
-          await saveToAllDbs(`gurujismart/MonthlyTestResults/${testId}/${safeRegno}`, resultData);
-          console.log("SUCCESS: Result saved to all Firebase databases.");
+        const resultData = {
+          regno, phone, email, trade, year,
+          score: calculatedScore,
+          totalMarks: testData.totalMarks || questions.reduce((acc, q) => acc + (q.marks || 1), 0),
+          submittedAt: new Date().toLocaleString(),
+          testName: testData.testTitle || testData.name || 'Test',
+          answers: currentAnswers
+        };
+        await saveToAllDbs(`gurujismart/MonthlyTestResults/${testId}/${safeRegno}`, resultData);
       }
     } catch (error) {
       console.error("ERROR: " + error.message);
-      alert("Error saving result: " + error.message);
     }
 
     setScore(calculatedScore);
     setStage('submitted');
   };
 
-  let mainContent;
+  // Get question palette status
+  const getQuestionStatus = (index) => {
+    const answered = answers[index] !== undefined && answers[index] !== '';
+    const marked = markedForReview[index];
+    const visited = visitedQuestions[index];
+
+    if (answered && marked) return 'answered-marked';
+    if (marked) return 'marked';
+    if (answered) return 'answered';
+    if (visited) return 'not-answered';
+    return 'not-visited';
+  };
+
+  // Count stats
+  const answeredCount = Object.values(answers).filter(v => v !== undefined && v !== '').length;
+  const notAnsweredCount = Object.keys(visitedQuestions).filter(i => !answers[i]).length;
+  const markedCount = Object.values(markedForReview).filter(Boolean).length;
+  const answeredMarkedCount = Object.keys(markedForReview).filter(i => markedForReview[i] && answers[i]).length;
+  const notVisitedCount = questions.length - Object.keys(visitedQuestions).length;
+
+  /* ── STAGES ── */
 
   if (stage === 'loading') {
-    mainContent = (
-      <div className="loading-state">
-        <div className="spinner"></div>
+    return (
+      <div className="exam-loading">
+        <div className="exam-spinner"></div>
         <p>Loading Exam...</p>
       </div>
     );
-  } else if (stage === 'error') {
-    mainContent = (
-      <div className="empty-state">
-        <AlertCircle size={48} className="empty-icon text-red-500" />
-        <h3>Error Loading Exam</h3>
-        <p>{errorMessage}</p>
-        <button className="btn btn-primary" onClick={() => navigate('/')}>Back to Dashboard</button>
-      </div>
-    );
-  } else if (stage === 'student_info') {
-    mainContent = (
-      <div className="instructions-container fade-in" style={{maxWidth: "520px", margin: "1rem auto", padding: "1rem"}}>
-        <div className="card test-instruction-card" style={{boxShadow: "0 12px 32px -4px rgba(15, 23, 42, 0.12)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)"}}>
-           <div style={{textAlign: 'center', marginBottom: '2rem'}}>
-              <div style={{width: "72px", height: "72px", margin: "0 auto 1.25rem", background: "linear-gradient(135deg, rgba(2, 132, 199, 0.1) 0%, rgba(13, 148, 136, 0.15) 100%)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid rgba(2, 132, 199, 0.25)"}}>
-                <BookOpen size={36} color="var(--primary)" />
-              </div>
-              <h2 style={{fontSize: '1.65rem', fontWeight: '800', letterSpacing: '-0.02em', color: "var(--text-dark)"}}>Student Information</h2>
-              <p style={{color: 'var(--text-light)', fontSize: "0.95rem", marginTop: "0.25rem"}}>Verify or enter your details to begin the exam session</p>
-           </div>
+  }
 
-           <form onSubmit={handleStudentInfoSubmit} style={{display: 'flex', flexDirection: 'column', gap: '1.35rem'}}>
-              <div className="form-group">
-                <label style={{display: 'block', marginBottom: '0.45rem', fontSize: '0.9rem', fontWeight: '600', color: "var(--text-medium)"}}>Email Address</label>
-                <input 
-                  type="email" 
-                  className={`form-control ${formErrors.email ? 'border-red-500' : ''}`}
-                  placeholder="name@example.com"
-                  value={studentInfo.email}
-                  onChange={(e) => {
-                    setStudentInfo({...studentInfo, email: e.target.value});
-                    setFormErrors({...formErrors, email: null});
-                  }}
-                  style={{width: '100%', padding: '0.9rem 1.15rem', borderRadius: '12px', border: '1.5px solid var(--border)', fontSize: '0.95rem', outline: 'none', transition: 'border 0.2s', background: "var(--background)", color: "var(--text-dark)"}}
-                />
-                {formErrors.email && <small className="text-red-500" style={{fontSize: '0.8rem', marginTop: '0.35rem', display: 'block'}}>{formErrors.email}</small>}
-              </div>
-
-              <div className="form-group">
-                <label style={{display: 'block', marginBottom: '0.45rem', fontSize: '0.9rem', fontWeight: '600', color: "var(--text-medium)"}}>Registration / PRN Number</label>
-                <input 
-                  type="text" 
-                  className={`form-control ${formErrors.regno ? 'border-red-500' : ''}`}
-                  placeholder="e.g. 102345"
-                  value={studentInfo.regno}
-                  onChange={(e) => {
-                    setStudentInfo({...studentInfo, regno: e.target.value});
-                    setFormErrors({...formErrors, regno: null});
-                  }}
-                  style={{width: '100%', padding: '0.9rem 1.15rem', borderRadius: '12px', border: '1.5px solid var(--border)', fontSize: '0.95rem', outline: 'none', transition: 'border 0.2s', background: "var(--background)", color: "var(--text-dark)"}}
-                />
-                {formErrors.regno && <small className="text-red-500" style={{fontSize: '0.8rem', marginTop: '0.35rem', display: 'block'}}>{formErrors.regno}</small>}
-              </div>
-
-              <div className="form-group">
-                <label style={{display: 'block', marginBottom: '0.45rem', fontSize: '0.9rem', fontWeight: '600', color: "var(--text-medium)"}}>Mobile Number</label>
-                <input 
-                  type="tel" 
-                  maxLength="10"
-                  className={`form-control ${formErrors.phone ? 'border-red-500' : ''}`}
-                  placeholder="10 digit mobile number"
-                  value={studentInfo.phone}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    setStudentInfo({...studentInfo, phone: val});
-                    setFormErrors({...formErrors, phone: null});
-                  }}
-                  style={{width: '100%', padding: '0.9rem 1.15rem', borderRadius: '12px', border: '1.5px solid var(--border)', fontSize: '0.95rem', outline: 'none', transition: 'border 0.2s', background: "var(--background)", color: "var(--text-dark)"}}
-                />
-                {formErrors.phone && <small className="text-red-500" style={{fontSize: '0.8rem', marginTop: '0.35rem', display: 'block'}}>{formErrors.phone}</small>}
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{marginTop: '0.75rem', padding: '1rem', fontWeight: '700', borderRadius: '12px', fontSize: '1.05rem', letterSpacing: '0.01em'}}>
-                Proceed to Exam Instructions
-              </button>
-           </form>
+  if (stage === 'error') {
+    return (
+      <div className="exam-center-wrap">
+        <div className="exam-card">
+          <AlertCircle size={48} color="#ef4444" />
+          <h3>Error Loading Exam</h3>
+          <p>{errorMessage}</p>
+          <button className="exam-btn exam-btn-primary" onClick={() => navigate('/')}>Back to Dashboard</button>
         </div>
       </div>
     );
-  } else if (stage === 'already_attempted') {
-    mainContent = (
-      <div className="result-container fade-in">
-        <div className="result-card card">
-          <BookOpen size={64} className="result-icon text-yellow-500" style={{color: "var(--accent)"}} />
-          <h2 className="result-title">Already Attempted!</h2>
-          <p className="score-feedback" style={{marginBottom: "1.5rem"}}>You have already submitted this exam with registration number: <strong>{studentInfo.regno}</strong>.</p>
-          <div className="score-board">
-            <span className="score-label">Previous Score</span>
-            <span className="score-value">{score}</span>
+  }
+
+  if (stage === 'student_info') {
+    return (
+      <div className="exam-center-wrap">
+        <div className="exam-card">
+          <div className="exam-card-icon">
+            <BookOpen size={36} color="#0284c7" />
           </div>
-          <button className="btn btn-primary" onClick={() => navigate('/')}>Return to Dashboard</button>
+          <h2>Student Information</h2>
+          <p className="exam-subtitle">Verify or enter your details to begin the exam session</p>
+
+          <form onSubmit={handleStudentInfoSubmit} className="exam-form">
+            <div className="exam-form-group">
+              <label>Email Address</label>
+              <input
+                type="email"
+                placeholder="name@example.com"
+                value={studentInfo.email}
+                className={formErrors.email ? 'error' : ''}
+                onChange={(e) => { setStudentInfo({ ...studentInfo, email: e.target.value }); setFormErrors({ ...formErrors, email: null }); }}
+              />
+              {formErrors.email && <small>{formErrors.email}</small>}
+            </div>
+            <div className="exam-form-group">
+              <label>Registration / PRN Number</label>
+              <input
+                type="text"
+                placeholder="e.g. 102345"
+                value={studentInfo.regno}
+                className={formErrors.regno ? 'error' : ''}
+                onChange={(e) => { setStudentInfo({ ...studentInfo, regno: e.target.value }); setFormErrors({ ...formErrors, regno: null }); }}
+              />
+              {formErrors.regno && <small>{formErrors.regno}</small>}
+            </div>
+            <div className="exam-form-group">
+              <label>Mobile Number</label>
+              <input
+                type="tel"
+                maxLength="10"
+                placeholder="10 digit mobile number"
+                value={studentInfo.phone}
+                className={formErrors.phone ? 'error' : ''}
+                onChange={(e) => { const val = e.target.value.replace(/\D/g, ''); setStudentInfo({ ...studentInfo, phone: val }); setFormErrors({ ...formErrors, phone: null }); }}
+              />
+              {formErrors.phone && <small>{formErrors.phone}</small>}
+            </div>
+            <button type="submit" className="exam-btn exam-btn-primary">Proceed to Exam Instructions</button>
+          </form>
         </div>
       </div>
     );
-  } else if (stage === 'instructions') {
-    mainContent = (
-      <div className="instructions-container fade-in" style={{maxWidth: "840px", margin: "1rem auto", padding: "1rem"}}>
-        <div className="card test-instruction-card" style={{boxShadow: "0 12px 32px -4px rgba(15, 23, 42, 0.12)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)"}}>
-           <div style={{textAlign: 'center', marginBottom: '2rem'}}>
-             <span className="test-badge" style={{marginBottom: "0.75rem"}}>{testData?.subject || "Examination"}</span>
-             <h2 className="test-title" style={{fontSize: '2.1rem', fontWeight: '800', letterSpacing: '-0.02em', marginTop: "0.25rem"}}>{testData?.name}</h2>
-             <p className="test-subtitle" style={{marginTop: "0.35rem", fontSize: "1rem"}}>Trade: <strong>{testData?.trade || searchParams.get('trade') || "General"}</strong> • Year: <strong>{testData?.year || searchParams.get('year') || "All"}</strong></p>
-           </div>
-           
-           <div className="instructions-content" style={{background: 'var(--border-light)', padding: '2rem', borderRadius: '16px', border: '1.5px solid var(--border)'}}>
-              <h3 style={{fontSize: '1.25rem', marginBottom: '1.25rem', fontWeight: '700', color: "var(--text-dark)", display: "flex", alignItems: "center", gap: "0.5rem"}}>
-                📋 Exam Guidelines &amp; Rules:
-              </h3>
-              <ul style={{listStyleType: 'disc', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', color: 'var(--text-medium)', fontSize: "0.98rem"}}>
-                 <li>Ensure you have a stable internet connection before clicking start.</li>
-                 <li>The exam consists of <strong>{questions.length} questions</strong> total.</li>
-                 <li>Total duration allocated: <strong>{Math.floor(timeRemaining / 60)} minutes</strong>.</li>
-                 <li>A real-time countdown timer will remain visible at the top during the exam.</li>
-                 <li>Once the timer expires, your answers are <strong>automatically submitted</strong>.</li>
-                 <li>Do not close the application or press back while the exam is in progress.</li>
-                 <li>Objective questions (MCQ &amp; True/False) are auto-graded immediately upon submission.</li>
-              </ul>
-           </div>
-           
-           <div style={{display: 'flex', justifyContent: 'center', marginTop: '2.25rem'}}>
-             <button className="btn btn-primary start-pulse" onClick={startTest} style={{padding: '1.1rem 3.5rem', fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderRadius: '14px', fontWeight: '700'}}>
-               Start Exam Now <PlayCircle size={24} />
-             </button>
-           </div>
-        </div>
-      </div>
-    );
-  } else if (stage === 'submitted') {
-    mainContent = (
-      <div className="result-container fade-in">
-        <div className="result-card card">
-          <CheckCircle size={64} className="result-icon" />
-          <h2 className="result-title">Exam Submitted Successfully!</h2>
-          <div className="score-board">
-            <span className="score-label">Your Auto-Score</span>
-            <span className="score-value">{score} <small>/ {testData?.totalMarks || questions.length}</small></span>
+  }
+
+  if (stage === 'already_attempted') {
+    return (
+      <div className="exam-center-wrap">
+        <div className="exam-card">
+          <BookOpen size={64} color="#f59e0b" />
+          <h2>Already Attempted!</h2>
+          <p>You have already submitted this exam with registration number: <strong>{studentInfo.regno}</strong>.</p>
+          <div className="exam-score-board">
+            <span className="exam-score-label">Previous Score</span>
+            <span className="exam-score-value">{score}</span>
           </div>
-          <p className="score-feedback">
-            Note: Theory and One-Line answers will need manual evaluation by your instructor.
-          </p>
+          <button className="exam-btn exam-btn-primary" onClick={() => navigate('/')}>Return to Dashboard</button>
         </div>
       </div>
     );
-  } else if (stage === 'testing') {
+  }
+
+  if (stage === 'instructions') {
+    return (
+      <div className="exam-center-wrap">
+        <div className="exam-card exam-instructions-card">
+          <span className="exam-badge">{testData?.subject || "Examination"}</span>
+          <h2>{testData?.name}</h2>
+          <p className="exam-subtitle">Trade: <strong>{testData?.trade || searchParams.get('trade') || "General"}</strong> • Year: <strong>{testData?.year || searchParams.get('year') || "All"}</strong></p>
+
+          <div className="exam-guidelines">
+            <h3>📋 Exam Guidelines &amp; Rules:</h3>
+            <ul>
+              <li>Ensure you have a stable internet connection before clicking start.</li>
+              <li>The exam consists of <strong>{questions.length} questions</strong> total.</li>
+              <li>Total duration allocated: <strong>{Math.floor((timeRemaining || 0) / 60)} minutes</strong>.</li>
+              <li>A real-time countdown timer will remain visible at the top during the exam.</li>
+              <li>Once the timer expires, your answers are <strong>automatically submitted</strong>.</li>
+              <li>Do not close the application or press back while the exam is in progress.</li>
+              <li>Objective questions (MCQ &amp; True/False) are auto-graded immediately upon submission.</li>
+            </ul>
+          </div>
+
+          <button className="exam-btn exam-btn-primary exam-btn-start" onClick={startTest}>
+            <PlayCircle size={22} /> Start Exam Now
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (stage === 'submitted') {
+    return (
+      <div className="exam-center-wrap">
+        <div className="exam-card">
+          <CheckCircle size={64} color="#10b981" />
+          <h2>Exam Submitted Successfully!</h2>
+          <div className="exam-score-board">
+            <span className="exam-score-label">Your Auto-Score</span>
+            <span className="exam-score-value">{score} <small>/ {testData?.totalMarks || questions.length}</small></span>
+          </div>
+          <p className="exam-subtitle">Note: Theory and One-Line answers will need manual evaluation by your instructor.</p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── TESTING STAGE (AcadLix-style UI) ── */
+  if (stage === 'testing') {
     const currentQuestion = questions[currentQuestionIndex];
     if (!currentQuestion) return null;
 
-    // MCQ Options
     const mcqOptions = [
       { key: 'A', text: currentQuestion.optA },
       { key: 'B', text: currentQuestion.optB },
@@ -462,125 +465,190 @@ export default function TestPage() {
       { key: 'D', text: currentQuestion.optD }
     ];
 
-    // True/False options
     const tfOptions = [
-        { key: 'True', text: 'True' },
-        { key: 'False', text: 'False' }
+      { key: 'True', text: 'True' },
+      { key: 'False', text: 'False' }
     ];
 
-    const currentQuestionIndex0Based = currentQuestionIndex + 1;
+    const isLastQuestion = currentQuestionIndex === questions.length - 1;
+    const timerWarning = timeRemaining !== null && timeRemaining < 300;
 
-    mainContent = (
-      <div className="test-container fade-in">
-        <div className="test-header card" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <div className="test-info">
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <h2 className="test-title" style={{fontSize: '1.3rem'}}>{testData?.name}</h2>
-              <span className="test-subtitle" style={{fontSize: '0.9rem'}}>{testData?.subject}</span>
+    return (
+      <div className="ep-wrapper">
+        {/* ── TOP HEADER ── */}
+        <header className="ep-header">
+          <div className="ep-header-left">
+            <div className="ep-logo">📚 ITI Guruji Exam</div>
+            <div className="ep-exam-name">{testData?.name}</div>
+          </div>
+          <div className="ep-header-right">
+            <div className={`ep-timer ${timerWarning ? 'ep-timer-warning' : ''}`}>
+              <Clock size={16} />
+              Time Left: {formatTime(timeRemaining)}
+            </div>
+            <div className="ep-student-name">
+              👤 {studentInfo.phone || studentInfo.regno || 'Student'}
             </div>
           </div>
-          <div className="test-meta" style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
-            <div className={`timer-chip ${timeRemaining < 300 ? 'timer-warning' : ''}`}>
-               <Clock size={19}/>
-               {formatTime(timeRemaining)}
-            </div>
-            <div className="progress-chip">
-              Q{currentQuestionIndex0Based} / {questions.length}
-            </div>
-          </div>
+        </header>
+
+        {/* ── SECTION TABS ── */}
+        <div className="ep-sections-bar">
+          <span className="ep-section-tab ep-section-active">
+            {testData?.subject || 'General'}
+          </span>
+          <button className="ep-view-instruction">View Instruction</button>
         </div>
 
-        <div className="question-card card">
-          <div className="question-header">
-             <h3 className="question-text">
-               <span className="q-number">Q{currentQuestion.questionNo || currentQuestionIndex0Based}.</span> {currentQuestion.question}
-             </h3>
-             <span className="question-marks">[{currentQuestion.marks} Marks]</span>
-          </div>
+        {/* ── MAIN BODY ── */}
+        <div className="ep-body">
+          {/* LEFT: Question Panel */}
+          <div className="ep-question-panel">
+            <div className="ep-q-meta">
+              <span>Question Type: <strong>Single Choice Question</strong></span>
+            </div>
 
-          {currentQuestion.questionImage && (
-               <div className="question-image-container">
-                   <img src={`data:image/jpeg;base64,${currentQuestion.questionImage}`} alt={`Question ${currentQuestion.questionNo}`} className="question-image"/>
-               </div>
-          )}
+            <div className="ep-q-number">Question No. {currentQuestion.questionNo || currentQuestionIndex + 1}</div>
 
-          <div className="options-container">
-              {currentQuestion.section === "MCQ" && (
-                  <div className="options-grid">
-                    {mcqOptions.map((option) => (
-                      valText(option.text) && (
-                        <button 
-                          key={option.key}
-                          className={`option-btn ${answers[currentQuestionIndex] === option.key ? 'selected' : ''}`}
-                          onClick={() => handleOptionSelect(option.key)}
-                        >
-                          <span className="option-label">{option.key}</span>
-                          <span className="option-text">{option.text}</span>
-                        </button>
-                      )
-                    ))}
-                  </div>
+            <div className="ep-q-text">{currentQuestion.question}</div>
+
+            {currentQuestion.questionImage && (
+              <div className="ep-q-image-wrap">
+                <img src={`data:image/jpeg;base64,${currentQuestion.questionImage}`} alt={`Q${currentQuestion.questionNo}`} />
+              </div>
+            )}
+
+            <div className="ep-options">
+              {currentQuestion.section === "MCQ" && mcqOptions.map(opt =>
+                valText(opt.text) && (
+                  <label
+                    key={opt.key}
+                    className={`ep-option ${answers[currentQuestionIndex] === opt.key ? 'ep-option-selected' : ''}`}
+                    onClick={() => handleOptionSelect(opt.key)}
+                  >
+                    <span className="ep-option-radio">
+                      {answers[currentQuestionIndex] === opt.key
+                        ? <span className="ep-radio-filled"></span>
+                        : <span className="ep-radio-empty"></span>
+                      }
+                    </span>
+                    <span className="ep-option-text">{opt.text}</span>
+                  </label>
+                )
               )}
 
-              {currentQuestion.section === "True/False" && (
-                  <div className="options-grid">
-                    {tfOptions.map((option) => (
-                        <button 
-                          key={option.key}
-                          className={`option-btn tf-btn ${answers[currentQuestionIndex] === option.key ? 'selected' : ''}`}
-                          onClick={() => handleOptionSelect(option.key)}
-                        >
-                          <span className="option-text" style={{textAlign: "center", width: "100%"}}>{option.text}</span>
-                        </button>
-                    ))}
-                  </div>
-              )}
+              {currentQuestion.section === "True/False" && tfOptions.map(opt => (
+                <label
+                  key={opt.key}
+                  className={`ep-option ${answers[currentQuestionIndex] === opt.key ? 'ep-option-selected' : ''}`}
+                  onClick={() => handleOptionSelect(opt.key)}
+                >
+                  <span className="ep-option-radio">
+                    {answers[currentQuestionIndex] === opt.key
+                      ? <span className="ep-radio-filled"></span>
+                      : <span className="ep-radio-empty"></span>
+                    }
+                  </span>
+                  <span className="ep-option-text">{opt.text}</span>
+                </label>
+              ))}
 
               {(currentQuestion.section === "One Line Answer" || currentQuestion.section === "Theory / Long Answer") && (
-                  <div className="text-answer-container">
-                      <textarea 
-                          className="text-answer-input"
-                          placeholder="Type your answer here..."
-                          value={answers[currentQuestionIndex] || ""}
-                          onChange={(e) => handleTextAnswer(e.target.value)}
-                          rows={currentQuestion.section === "Theory / Long Answer" ? 6 : 2}
-                      />
-                  </div>
+                <textarea
+                  className="ep-textarea"
+                  placeholder="Type your answer here..."
+                  value={answers[currentQuestionIndex] || ""}
+                  onChange={(e) => handleTextAnswer(e.target.value)}
+                  rows={currentQuestion.section === "Theory / Long Answer" ? 6 : 3}
+                />
               )}
+            </div>
+          </div>
+
+          {/* RIGHT: Sidebar */}
+          <div className={`ep-sidebar ${sidebarOpen ? '' : 'ep-sidebar-collapsed'}`}>
+            <button className="ep-sidebar-toggle" onClick={() => setSidebarOpen(o => !o)}>
+              <ChevronRight size={16} style={{ transform: sidebarOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }} />
+            </button>
+
+            {sidebarOpen && (
+              <>
+                {/* Legend */}
+                <div className="ep-legend">
+                  <div className="ep-legend-item">
+                    <span className="ep-dot ep-dot-answered">{answeredCount}</span>
+                    <span>Answered</span>
+                    <span className="ep-dot ep-dot-not-answered">{notAnsweredCount}</span>
+                    <span>Not Answered</span>
+                  </div>
+                  <div className="ep-legend-item">
+                    <span className="ep-dot ep-dot-not-visited">{notVisitedCount}</span>
+                    <span>Not Visited</span>
+                    <span className="ep-dot ep-dot-marked">{markedCount}</span>
+                    <span>Marked for Review</span>
+                  </div>
+                  <div className="ep-legend-item-full">
+                    <span className="ep-dot ep-dot-answered-marked">{answeredMarkedCount}</span>
+                    <span>Answered and Marked for Review (will be considered for evaluation)</span>
+                  </div>
+                </div>
+
+                {/* Question Palette */}
+                <div className="ep-palette-header">
+                  <span>{testData?.subject || 'General'}</span>
+                  <span>Choose a Question</span>
+                </div>
+                <div className="ep-palette">
+                  {questions.map((_, index) => (
+                    <button
+                      key={index}
+                      className={`ep-palette-btn ep-palette-${getQuestionStatus(index)} ${index === currentQuestionIndex ? 'ep-palette-current' : ''}`}
+                      onClick={() => goToQuestion(index)}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        <div className="test-navigation card">
-          <button 
-            className="btn btn-outline" 
-            onClick={handlePrev} 
-            disabled={currentQuestionIndex === 0}
-          >
-            <ChevronLeft size={18} /> Previous
-          </button>
-
-          {currentQuestionIndex === questions.length - 1 ? (
-            <button className="btn btn-primary submit-pulse" onClick={() => handleSubmit(false)}>
-              Submit Exam <CheckCircle size={18} />
+        {/* ── BOTTOM NAVIGATION ── */}
+        <footer className="ep-footer">
+          <div className="ep-footer-left">
+            <button className="ep-btn ep-btn-outline" onClick={handleMarkForReview}>
+              Mark for Review &amp; Next
             </button>
-          ) : (
-            <button className="btn btn-primary" onClick={handleNext}>
-              Next <ChevronRight size={18} />
+            <button className="ep-btn ep-btn-ghost" onClick={handleClearResponse}>
+              Clear Response
             </button>
-          )}
-        </div>
+          </div>
+          <div className="ep-footer-right">
+            <button className="ep-btn ep-btn-outline" onClick={handlePrev} disabled={currentQuestionIndex === 0}>
+              Previous
+            </button>
+            {isLastQuestion ? (
+              <button className="ep-btn ep-btn-submit" onClick={() => handleSubmit(false)}>
+                Submit
+              </button>
+            ) : (
+              <button className="ep-btn ep-btn-primary" onClick={handleNext}>
+                Save &amp; Next
+              </button>
+            )}
+            <button className="ep-btn ep-btn-submit" onClick={() => handleSubmit(false)}>
+              Submit
+            </button>
+          </div>
+        </footer>
       </div>
     );
   }
 
-  return (
-    <div className="test-page-wrapper">
-      {mainContent}
-    </div>
-  );
+  return null;
 }
 
-// helper to exclude empty options
 function valText(txt) {
   return txt && txt.trim() !== "";
 }

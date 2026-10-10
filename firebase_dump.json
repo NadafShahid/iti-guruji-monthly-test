@@ -1,0 +1,64 @@
+{
+  "Fitter": {
+    "1st_Year": {
+      "6c8ee993": {
+        "academicYear": "2025-26",
+        "createdAt": "2026-03-13 12:33:16",
+        "creatorMob": "9699368189",
+        "subject": "Trade Theory",
+        "testId": "6c8ee993",
+        "testLink": "https://gurujismart.page.link/monthlytest/9699368189/6c8ee993",
+        "testTitle": "March",
+        "totalMarks": 4,
+        "totalQuestions": 2,
+        "trade": "Fitter",
+        "year": "1st Year"
+      }
+    },
+    "2nd_Year": {
+      "9d8aefe7": {
+        "academicYear": "2025-26",
+        "createdAt": "2026-03-13 22:40:33",
+        "creatorMob": "9699368189",
+        "subject": "Employability Skills",
+        "testId": "9d8aefe7",
+        "testLink": "https://gurujismart.page.link/monthlytest/9699368189/9d8aefe7",
+        "testTitle": "March",
+        "totalMarks": 2,
+        "totalQuestions": 1,
+        "trade": "Fitter",
+        "year": "2nd Year"
+      }
+    }
+  },
+  "Turner": {
+    "2nd_Year": {
+      "52ce34b1": {
+        "academicYear": "2025-26",
+        "createdAt": "2026-03-13 12:35:08",
+        "creatorMob": "9699368189",
+        "subject": "Engineering Drawing",
+        "testId": "52ce34b1",
+        "testLink": "https://gurujismart.page.link/monthlytest/9699368189/52ce34b1",
+        "testTitle": "March",
+        "totalMarks": 2,
+        "totalQuestions": 1,
+        "trade": "Turner",
+        "year": "2nd Year"
+      },
+      "cf696b31": {
+        "academicYear": "2025-26",
+        "createdAt": "2026-03-14 17:09:04",
+        "creatorMob": "9421989575",
+        "subject": "Trade Theory",
+        "testId": "cf696b31",
+        "testLink": "https://gurujismart.page.link/monthlytest/9421989575/cf696b31",
+        "testTitle": "Demo test",
+        "totalMarks": 8,
+        "totalQuestions": 2,
+        "trade": "Turner",
+        "year": "2nd Year"
+      }
+    }
+  }
+}

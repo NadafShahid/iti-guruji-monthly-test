@@ -1,0 +1,165 @@
+.college-page {
+  color: #193238;
+}
+
+.college-state {
+  min-height: 48vh;
+  display: grid;
+  place-items: center;
+  color: #40646d;
+  font-size: 1.1rem;
+}
+
+.college-hero {
+  min-height: 56vh;
+  display: flex;
+  align-items: end;
+  padding: 4rem 2rem;
+  border-radius: 0 0 24px 24px;
+  background:
+    linear-gradient(0deg, rgba(0, 96, 100, 0.82), rgba(0, 150, 166, 0.32)),
+    url('../assets/hero.png') center / cover;
+  color: #fff;
+}
+
+.college-hero > div,
+.college-section {
+  width: min(1100px, 100%);
+  margin: 0 auto;
+}
+
+.college-kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.75rem;
+  font-weight: 700;
+}
+
+.college-hero h1 {
+  max-width: 850px;
+  margin: 0;
+  font-size: clamp(2.3rem, 7vw, 5rem);
+  line-height: 1.02;
+}
+
+.college-subtitle {
+  max-width: 620px;
+  margin: 1rem 0 0;
+  font-size: 1.1rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.college-section {
+  padding: 2.4rem 1rem 0;
+}
+
+.college-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  color: #006064;
+}
+
+.feature-grid,
+.topper-grid,
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.feature-item,
+.activity-item,
+.topper-card,
+.team-card {
+  background: #fff;
+  border: 1px solid #d6edf0;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 10px 24px rgba(0, 96, 100, 0.08);
+}
+
+.activity-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.activity-item h3,
+.topper-card h3 {
+  margin: 0 0 0.4rem;
+}
+
+.activity-item p {
+  margin: 0;
+  color: #526970;
+}
+
+.topper-card {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.topper-card img,
+.photo-placeholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #e0f7fa;
+}
+
+.photo-placeholder {
+  display: grid;
+  place-items: center;
+  color: #00838f;
+}
+
+.topper-card span,
+.team-card span {
+  color: #607d8b;
+  font-size: 0.92rem;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.gallery-grid img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.team-card {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.social-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-bottom: 2.5rem;
+}
+
+.social-section a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #fff;
+  background: #00838f;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.social-section a.disabled {
+  pointer-events: none;
+  opacity: 0.45;
+}
